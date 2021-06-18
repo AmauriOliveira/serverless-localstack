@@ -1,0 +1,49 @@
+version: '3'
+
+services:
+  localstack:
+    container_name: "localstack"
+    image: localstack/localstack
+    network_mode: bridge
+    environment:
+      - AWS_DEFAULT_REGION=us-east-1
+      - EDGE_PORT=4566
+      - SERVICES=sqs,sns,ssm,s3,apigateway,lambda
+      - LAMBDA_EXECUTOR=local
+      - LAMBDA_REMOTE_DOCKER=false
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DEBUG=1
+    ports:
+      - 53:53
+      - 443:443
+      - 4510-4520:4510-4520
+      - 4566-4567:4566-4567
+      - 4572-4576:4572-4576
+      - 4583:4583
+
+    volumes:
+      - '${TEMPDIR:-/tmp/localstack}:/temp/localstack'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+
+  app:
+    build: .
+    volumes: 
+      - .:/src
+      - nodemodules:/src/node_modules
+    restart: on-failure
+    ports: 
+      - 3000:3000
+    links:
+      - localstack
+    depends_on: 
+      - localstack
+    environment: 
+      LOCALSTACK_HOST: localhost
+      S3_PORT: 4566 # 4572
+      SQS_PORT: 4566 # 4576
+
+
+volumes: 
+  nodemodules: {
+
+  }

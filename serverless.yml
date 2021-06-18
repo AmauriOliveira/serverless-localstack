@@ -1,0 +1,89 @@
+service: tooling-s3-sqs
+frameworkVersion: '2'
+
+plugins:
+  - serverless-localstack
+  - serverless-mocha-plugin
+  - serverless-offline
+  # Documentação recomenda deixar Serverless-offline para o fim
+
+custom:
+  sqsArn:
+    Fn::GetAtt:
+      - SQSQueue
+      - Arn
+
+  localstack:
+    stage:
+      - local
+    autostart: false
+
+  serverless-offline:
+    useChildProcesses: true
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: 20201221
+  stage: ${opt:stage, 'dev'}
+  environment:
+    BUCKET_NAME: amauri-oliveira-tokenlab
+    SQS_QUEUE: file-queue
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - sqs:SendMessage
+        - sqs:GetQueueUrl
+        - sqs:CreateQueue
+        - sqs:ReceiveMessage
+      Resource: ${self:custom.sqsArn}
+    - Effect: Allow
+      Action:
+        - s3:*
+      Resource:
+        - arn:aws:s3:::${self:provider.environment.BUCKET_NAME}/*
+        - arn:aws:s3:::${self:provider.environment.BUCKET_NAME}
+
+package:
+  individually: true
+  excludeDevDependencies: true
+
+functions:
+  hello:
+    handler: handler.hello
+    events:
+      - http:
+          method: get
+          path: hello
+
+  s3Listener:
+    handler: src/index.s3Listener
+    events:
+      - s3:
+          bucket: ${self:provider.environment.BUCKET_NAME}
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .csv
+
+  sqsListener:
+    handler: src/index.sqsListener
+    events:
+      - sqs:
+          batchSize: 1
+          arn: ${self:custom.sqsArn}
+
+  sqsClean:
+    handler: src/index.sqsClean
+    events:
+      - http:
+          method: get
+          path: clean
+
+resources:
+  Resources:
+    SQSQueue: #Nome é livre
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:provider.environment.SQS_QUEUE}
+        # nunca coloque valor 0 senão gera loop infinito, é o tempo que a fila espera e resposta da lambda
+        VisibilityTimeout: 60
